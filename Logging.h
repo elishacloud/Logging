@@ -174,6 +174,7 @@ namespace Logging
 		std::ostream& m_os;
 	};
 
+#ifdef _DEBUG
 	typedef Log LogDebug;
 
 	class LogEnter : private Log
@@ -206,6 +207,23 @@ namespace Logging
 			static_cast<Log&>(*this) << " = " << std::hex << result << std::dec;
 		}
 	};
+#else
+	class LogNull
+	{
+	public:
+		template <typename T> LogNull& operator<<(const T&) { return *this; }
+	};
+
+	typedef LogNull LogDebug;
+
+	class LogEnter : public LogNull
+	{
+	public:
+		template <typename... Params> LogEnter(const char*, Params...) {}
+	};
+
+	typedef LogEnter LogLeave;
+#endif
 
 	template <typename Num>
 	std::ostream& operator<<(std::ostream& os, Hex<Num> hex)
