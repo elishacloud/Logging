@@ -143,22 +143,6 @@ std::ostream& operator<<(std::ostream& os, const CWPRETSTRUCT& cwrp)
 
 namespace Logging
 {
-	Log::Log()
-	{
-		SYSTEMTIME st = {};
-		GetLocalTime(&st);
-
-		char time[100];
-		sprintf_s(time, "%02hu:%02hu:%02hu.%03hu ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
-
-		LOG << GetCurrentThreadId() << " " << time;
-	}
-
-	Log::~Log()
-	{
-		LOG << std::endl;
-	}
-
 	DWORD Log::s_outParamDepth = 0;
 	bool Log::s_isLeaveLog = false;
 }

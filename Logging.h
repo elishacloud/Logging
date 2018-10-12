@@ -2,6 +2,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <fstream>
+#include <iostream>
 #include <ostream>
 #include <type_traits>
 
@@ -13,8 +14,10 @@
 		isAlreadyLogged##__LINE__ = true; \
 	}
 
-#ifndef DINPUTTO8NOLOG
+#ifndef NOLOGGING
 extern std::ofstream LOG;
+#else
+#define LOG std::cout
 #endif
 
 std::ostream& operator<<(std::ostream& os, const char* str);
@@ -67,8 +70,21 @@ namespace Logging
 	class Log
 	{
 	public:
-		Log();
-		~Log();
+		Log::Log()
+		{
+			SYSTEMTIME st = {};
+			GetLocalTime(&st);
+
+			char time[100];
+			sprintf_s(time, "%02hu:%02hu:%02hu.%03hu ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+
+			LOG << GetCurrentThreadId() << " " << time;
+		}
+
+		Log::~Log()
+		{
+			LOG << std::endl;
+		}
 
 		template <typename T>
 		Log& operator<<(const T& t)
