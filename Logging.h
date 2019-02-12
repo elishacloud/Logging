@@ -14,11 +14,7 @@
 		isAlreadyLogged##__LINE__ = true; \
 	}
 
-#ifndef NOLOGGING
 extern std::ofstream LOG;
-#else
-#define LOG std::cout
-#endif
 
 std::ostream& operator<<(std::ostream& os, const char* str);
 std::ostream& operator<<(std::ostream& os, const unsigned char* data);
@@ -33,6 +29,17 @@ std::ostream& operator<<(std::ostream& os, const CWPRETSTRUCT& cwrp);
 
 namespace Logging
 {
+	extern bool EnableLogging;
+
+	template <typename T>
+	void Open(T Name)
+	{
+		if (EnableLogging)
+		{
+			LOG.open(Name);
+		}
+	}
+
 	using ::operator<<;
 
 	template <typename Num>
@@ -72,24 +79,33 @@ namespace Logging
 	public:
 		Log::Log()
 		{
-			SYSTEMTIME st = {};
-			GetLocalTime(&st);
+			if (EnableLogging)
+			{
+				SYSTEMTIME st = {};
+				GetLocalTime(&st);
 
-			char time[100];
-			sprintf_s(time, "%02hu:%02hu:%02hu.%03hu ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+				char time[100];
+				sprintf_s(time, "%02hu:%02hu:%02hu.%03hu ", st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
 
-			LOG << GetCurrentThreadId() << " " << time;
+				LOG << GetCurrentThreadId() << " " << time;
+			}
 		}
 
 		Log::~Log()
 		{
-			LOG << std::endl;
+			if (EnableLogging)
+			{
+				LOG << std::endl;
+			}
 		}
 
 		template <typename T>
 		Log& operator<<(const T& t)
 		{
-			LOG << t;
+			if (EnableLogging)
+			{
+				LOG << t;
+			}
 			return *this;
 		}
 
@@ -99,9 +115,12 @@ namespace Logging
 		template <typename... Params>
 		Log(const char* prefix, const char* funcName, Params... params) : Log()
 		{
-			LOG << prefix << ' ' << funcName << '(';
-			toList(params...);
-			LOG << ')';
+			if (EnableLogging)
+			{
+				LOG << prefix << ' ' << funcName << '(';
+				toList(params...);
+				LOG << ')';
+			}
 		}
 
 	private:

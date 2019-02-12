@@ -34,6 +34,8 @@
 
 namespace Logging
 {
+	bool EnableLogging = true;
+
 	void GetOsVersion(RTL_OSVERSIONINFOEXW *);
 	void GetVersionReg(OSVERSIONINFO *);
 	void GetVersionFile(OSVERSIONINFO *);
@@ -149,6 +151,11 @@ namespace Logging
 
 void Logging::LogFormat(char * fmt, ...)
 {
+	if (!EnableLogging)
+	{
+		return;
+	}
+
 	// Format arg list
 	va_list ap;
 	va_start(ap, fmt);
@@ -163,6 +170,11 @@ void Logging::LogFormat(char * fmt, ...)
 
 void Logging::LogFormat(wchar_t * fmt, ...)
 {
+	if (!EnableLogging)
+	{
+		return;
+	}
+
 	// Format arg list
 	va_list ap;
 	va_start(ap, fmt);
@@ -179,6 +191,11 @@ void Logging::LogFormat(wchar_t * fmt, ...)
 // Logs the process name and PID
 void Logging::LogProcessNameAndPID()
 {
+	if (!EnableLogging)
+	{
+		return;
+	}
+
 	// Get process name
 	wchar_t exepath[MAX_PATH] = { 0 };
 	GetModuleFileNameW(nullptr, exepath, MAX_PATH);
@@ -331,6 +348,11 @@ void Logging::GetVersionFile(OSVERSIONINFO *oOS_version)
 // Log hardware manufacturer
 void Logging::LogComputerManufacturer()
 {
+	if (!EnableLogging)
+	{
+		return;
+	}
+
 	std::string Buffer1, Buffer2;
 	HKEY hkData;
 	LPSTR lpString1 = nullptr, lpString2 = nullptr, lpString3 = nullptr;
@@ -491,6 +513,11 @@ void Logging::LogComputerManufacturer()
 // Log Windows Operating System type
 void Logging::LogOSVersion()
 {
+	if (!EnableLogging)
+	{
+		return;
+	}
+
 	// Declare vars
 	RTL_OSVERSIONINFOEXW oOS_version;
 	OSVERSIONINFO fOS_version, rOS_version;
@@ -631,6 +658,11 @@ void Logging::LogOSVersion()
 // Log video card type
 void Logging::LogVideoCard()
 {
+	if (!EnableLogging)
+	{
+		return;
+	}
+
 	DISPLAY_DEVICE DispDev;
 	ZeroMemory(&DispDev, sizeof(DispDev));
 	DispDev.cb = sizeof(DispDev);
