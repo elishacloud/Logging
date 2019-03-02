@@ -77,9 +77,11 @@ namespace Logging
 	class Log
 	{
 	public:
-		Log::Log()
+		Log::Log(bool *DoWrite = nullptr)
 		{
-			if (EnableLogging)
+			WriteLog = DoWrite;
+
+			if (CheckWrite())
 			{
 				SYSTEMTIME st = {};
 				GetLocalTime(&st);
@@ -93,16 +95,20 @@ namespace Logging
 
 		Log::~Log()
 		{
-			if (EnableLogging)
+			if (CheckWrite())
 			{
 				LOG << std::endl;
+			}
+			if (WriteLog)
+			{
+				*WriteLog = false;
 			}
 		}
 
 		template <typename T>
 		Log& operator<<(const T& t)
 		{
-			if (EnableLogging)
+			if (CheckWrite())
 			{
 				LOG << t;
 			}
@@ -115,7 +121,7 @@ namespace Logging
 		template <typename... Params>
 		Log(const char* prefix, const char* funcName, Params... params) : Log()
 		{
-			if (EnableLogging)
+			if (CheckWrite())
 			{
 				LOG << prefix << ' ' << funcName << '(';
 				toList(params...);
@@ -144,8 +150,18 @@ namespace Logging
 			toList(remainingParams...);
 		}
 
+		bool CheckWrite()
+		{
+			if (!EnableLogging || (WriteLog && !*WriteLog))
+			{
+				return false;
+			}
+			return true;
+		}
+
 		static DWORD s_outParamDepth;
 		static bool s_isLeaveLog;
+		bool *WriteLog;
 	};
 
 	class LogParams;
