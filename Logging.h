@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef SHARED_LOGGING_MODULE
+#define SHARED_LOGGING_MODULE
+
 #define WIN32_LEAN_AND_MEAN
 #include <fstream>
 #include <iostream>
@@ -343,3 +346,5 @@ std::ostream& operator<<(std::ostream& os, T** t)
 
 	return os;
 }
+
+#endif // !SHARED_LOGGING_MODULE
