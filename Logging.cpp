@@ -1,5 +1,5 @@
 /**
-* Copyright (C) 2018 Elisha Riedlinger
+* Copyright (C) 2019 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -536,7 +536,7 @@ void Logging::LogOSVersion()
 
 	// Choose whichever version is higher
 	// Newer OS's report older version numbers for compatibility
-	// This allows dxwrapper to get the proper OS version number
+	// This allows function to get the proper OS version number
 	if (rOS_version.dwMajorVersion > oOS_version.dwMajorVersion)
 	{
 		oOS_version.dwMajorVersion = rOS_version.dwMajorVersion;
