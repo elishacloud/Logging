@@ -24,12 +24,17 @@
 *
 * Code in LogComputerManufacturer function taken from source code found on rohitab.com
 * http://www.rohitab.com/discuss/topic/35915-win32-api-to-get-system-information/
+*
+* Code in GetPPID taken from mattn GitHub project
+* https://gist.github.com/mattn/253013/d47b90159cf8ffa4d92448614b748aa1d235ebe4
 */
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <atlstr.h>
 #include <VersionHelpers.h>
+#include <psapi.h>
+#include <tlhelp32.h>
 #include "Logging.h"
 
 namespace Logging
@@ -39,6 +44,11 @@ namespace Logging
 	void GetOsVersion(RTL_OSVERSIONINFOEXW *);
 	void GetVersionReg(OSVERSIONINFO *);
 	void GetVersionFile(OSVERSIONINFO *);
+	DWORD GetPPID();
+	bool CheckProcessNameFromPID(DWORD pid, char *name);
+	bool CheckEachParentFolder(char *file, char *path);
+	void LogGOGGameType();
+	void LogSteamGameType();
 }
 
 namespace
@@ -670,4 +680,139 @@ void Logging::LogVideoCard()
 	DWORD nDeviceIndex = 0;
 	EnumDisplayDevices(NULL, nDeviceIndex, &DispDev, 0);
 	Log() << DispDev.DeviceString;
+}
+
+// Get process parent PID
+DWORD Logging::GetPPID()
+{
+	HANDLE hSnapshot;
+	PROCESSENTRY32 pe32;
+	DWORD ppid = 0, pid = GetCurrentProcessId();
+
+	hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	__try
+	{
+		if (hSnapshot == INVALID_HANDLE_VALUE) __leave;
+
+		ZeroMemory(&pe32, sizeof(pe32));
+		pe32.dwSize = sizeof(pe32);
+		if (!Process32First(hSnapshot, &pe32)) __leave;
+
+		do {
+			if (pe32.th32ProcessID == pid) {
+				ppid = pe32.th32ParentProcessID;
+				break;
+			}
+		} while (Process32Next(hSnapshot, &pe32));
+
+	}
+	__finally
+	{
+		if (hSnapshot != INVALID_HANDLE_VALUE) CloseHandle(hSnapshot);
+	}
+	return ppid;
+}
+
+// Check if process name matches the requested PID
+bool Logging::CheckProcessNameFromPID(DWORD pid, char *name)
+{
+	// Open process handle
+	HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, false, pid);
+	if (!hProcess)
+	{
+		return false;
+	}
+
+	// Get process path
+	char pidname[MAX_PATH];
+	DWORD size = GetProcessImageFileNameA(hProcess, (LPSTR)&pidname, MAX_PATH);
+	if (!size)
+	{
+		return false;
+	}
+
+	// Get process name
+	char* p_wName = strrchr(pidname, '\\');
+	if (!p_wName || !(p_wName > pidname && p_wName < pidname + MAX_PATH))
+	{
+		return false;
+	}
+	p_wName++;
+
+	// Check if name matches
+	if (!_strcmpi(name, p_wName))
+	{
+		return true;
+	}
+
+	return false;
+}
+
+// Check each parent path
+bool Logging::CheckEachParentFolder(char *file, char *path)
+{
+	if (!file || !path)
+	{
+		return false;
+	}
+
+	// Predefined varables
+	std::string separator("\\");
+	char name[MAX_PATH];
+	strcpy_s(name, MAX_PATH, path);
+
+	// Check each parent path
+	do {
+		char* p_wName = strrchr(name, '\\');
+		if (!p_wName || !(p_wName > name && p_wName < name + MAX_PATH))
+		{
+			return false;
+		}
+		*p_wName = '\0';
+
+		// Check if file exists in the path
+		if (PathFileExistsA(std::string(name + separator + file).c_str()))
+		{
+			return true;
+		}
+	} while (true);
+
+	return false;
+}
+
+// Log if game is a GOG game
+void Logging::LogGOGGameType()
+{
+	// Get process path
+	char name[MAX_PATH] = { 0 };
+	GetModuleFileName(nullptr, name, MAX_PATH);
+
+	// Check if game is a GOG game
+	if (GetModuleHandleA("goggame.dll") || CheckEachParentFolder("goggame.dll", name))
+	{
+		Log() << "Good Old Games (GOG) detected!";
+		return;
+	}
+}
+
+// Log if game is a Steam game
+void Logging::LogSteamGameType()
+{
+	// Get process path
+	char name[MAX_PATH] = { 0 };
+	GetModuleFileName(nullptr, name, MAX_PATH);
+
+	// Check if game is a Steam game
+	if (GetModuleHandleA("steam_api.dll") || CheckEachParentFolder("steam_api.dll", name) || CheckProcessNameFromPID(GetPPID(), "steam.exe"))
+	{
+		Log() << "Steam game detected!";
+		return;
+	}
+}
+
+// Log if game type if found (GOG or Steam)
+void Logging::LogGameType()
+{
+	LogGOGGameType();
+	LogSteamGameType();
 }

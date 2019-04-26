@@ -17,6 +17,23 @@
 		isAlreadyLogged##__LINE__ = true; \
 	}
 
+#ifdef _DEBUG
+#define LOG_LIMIT(num, msg) \
+	Logging::Log() << msg;
+#else
+#define LOG_LIMIT(num, msg) \
+	static bool isAlreadyLogged##__LINE__ = false; \
+	static DWORD LoggedCount##__LINE__ = 1; \
+	if (!isAlreadyLogged##__LINE__) \
+	{ \
+		Logging::Log() << msg; \
+		if (++LoggedCount##__LINE__ > num) \
+		{ \
+			isAlreadyLogged##__LINE__ = true; \
+		} \
+	}
+#endif
+
 extern std::ofstream LOG;
 
 std::ostream& operator<<(std::ostream& os, const char* str);
@@ -80,10 +97,8 @@ namespace Logging
 	class Log
 	{
 	public:
-		Log::Log(bool *DoWrite = nullptr)
+		Log::Log()
 		{
-			WriteLog = DoWrite;
-
 			if (CheckWrite())
 			{
 				SYSTEMTIME st = {};
@@ -101,10 +116,6 @@ namespace Logging
 			if (CheckWrite())
 			{
 				LOG << std::endl;
-			}
-			if (WriteLog)
-			{
-				*WriteLog = false;
 			}
 		}
 
@@ -155,7 +166,7 @@ namespace Logging
 
 		bool CheckWrite()
 		{
-			if (!EnableLogging || (WriteLog && !*WriteLog))
+			if (!EnableLogging)
 			{
 				return false;
 			}
@@ -164,7 +175,6 @@ namespace Logging
 
 		static DWORD s_outParamDepth;
 		static bool s_isLeaveLog;
-		bool *WriteLog;
 	};
 
 	class LogParams;
@@ -303,6 +313,7 @@ namespace Logging
 	void LogOSVersion();
 	void LogComputerManufacturer();
 	void LogVideoCard();
+	void LogGameType();
 }
 
 template <typename T>
