@@ -785,7 +785,7 @@ void Logging::LogGOGGameType()
 {
 	// Get process path
 	char name[MAX_PATH] = { 0 };
-	GetModuleFileName(nullptr, name, MAX_PATH);
+	GetModuleFileNameA(nullptr, name, MAX_PATH);
 
 	// Check if game is a GOG game
 	if (GetModuleHandleA("goggame.dll") || CheckEachParentFolder("goggame.dll", name))
@@ -800,7 +800,7 @@ void Logging::LogSteamGameType()
 {
 	// Get process path
 	char name[MAX_PATH] = { 0 };
-	GetModuleFileName(nullptr, name, MAX_PATH);
+	GetModuleFileNameA(nullptr, name, MAX_PATH);
 
 	// Check if game is a Steam game
 	if (GetModuleHandleA("steam_api.dll") || CheckEachParentFolder("steam_api.dll", name) || CheckProcessNameFromPID(GetPPID(), "steam.exe"))
