@@ -790,7 +790,7 @@ void Logging::LogGOGGameType()
 	// Check if game is a GOG game
 	if (GetModuleHandleA("goggame.dll") || CheckEachParentFolder("goggame.dll", name))
 	{
-		Log() << "Good Old Games (GOG) detected!";
+		Log() << "Good Old Games (GOG) game detected!";
 		return;
 	}
 }
