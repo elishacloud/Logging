@@ -97,8 +97,10 @@ namespace Logging
 	class Log
 	{
 	public:
-		Log::Log()
+		Log::Log(bool LogEvent = true)
 		{
+			LogThisEvent = LogEvent;
+
 			if (CheckWrite())
 			{
 				SYSTEMTIME st = {};
@@ -164,17 +166,11 @@ namespace Logging
 			toList(remainingParams...);
 		}
 
-		bool CheckWrite()
-		{
-			if (!EnableLogging)
-			{
-				return false;
-			}
-			return true;
-		}
+		bool Log::CheckWrite() { return (EnableLogging && LogThisEvent); }
 
 		static DWORD s_outParamDepth;
 		static bool s_isLeaveLog;
+		bool LogThisEvent = true;
 	};
 
 	class LogParams;
