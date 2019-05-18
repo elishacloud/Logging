@@ -10,11 +10,13 @@
 #include <type_traits>
 
 #define LOG_ONCE(msg) \
-	static bool isAlreadyLogged##__LINE__ = false; \
-	if (!isAlreadyLogged##__LINE__) \
 	{ \
-		Logging::Log() << msg; \
-		isAlreadyLogged##__LINE__ = true; \
+		static bool isAlreadyLogged##__LINE__ = false; \
+		if (!isAlreadyLogged##__LINE__) \
+		{ \
+			Logging::Log() << msg; \
+			isAlreadyLogged##__LINE__ = true; \
+		} \
 	}
 
 #ifdef _DEBUG
@@ -22,15 +24,17 @@
 	Logging::Log() << msg;
 #else
 #define LOG_LIMIT(num, msg) \
-	static bool isAlreadyLogged##__LINE__ = false; \
-	static DWORD LoggedCount##__LINE__ = 1; \
-	if (!isAlreadyLogged##__LINE__) \
 	{ \
-		Logging::Log() << msg; \
-		if (++LoggedCount##__LINE__ > num) \
+		static bool isAlreadyLogged##__LINE__ = false; \
+		static DWORD LoggedCount##__LINE__ = 1; \
+		if (!isAlreadyLogged##__LINE__) \
 		{ \
-			isAlreadyLogged##__LINE__ = true; \
-		} \
+			Logging::Log() << msg; \
+			if (++LoggedCount##__LINE__ > num) \
+			{ \
+				isAlreadyLogged##__LINE__ = true; \
+			} \
+		{ \
 	}
 #endif
 
