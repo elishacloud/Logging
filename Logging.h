@@ -34,7 +34,7 @@
 			{ \
 				isAlreadyLogged##__LINE__ = true; \
 			} \
-		{ \
+		} \
 	}
 #endif
 
