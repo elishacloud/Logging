@@ -756,7 +756,7 @@ bool Logging::CheckEachParentFolder(char *file, char *path)
 		return false;
 	}
 
-	// Predefined varables
+	// Predefined variables
 	std::string separator("\\");
 	char name[MAX_PATH];
 	strcpy_s(name, MAX_PATH, path);
