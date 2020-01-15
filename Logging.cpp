@@ -1,5 +1,5 @@
 /**
-* Copyright (C) 2019 Elisha Riedlinger
+* Copyright (C) 2020 Elisha Riedlinger
 *
 * This software is  provided 'as-is', without any express  or implied  warranty. In no event will the
 * authors be held liable for any damages arising from the use of this software.
@@ -44,6 +44,7 @@ namespace Logging
 	void GetOsVersion(RTL_OSVERSIONINFOEXW *);
 	void GetVersionReg(OSVERSIONINFO *);
 	void GetVersionFile(OSVERSIONINFO *);
+	void GetProductName(char *Name, DWORD Size);
 	DWORD GetPPID();
 	bool CheckProcessNameFromPID(DWORD pid, char *name);
 	bool CheckEachParentFolder(char *file, char *path);
@@ -256,14 +257,14 @@ void Logging::GetVersionReg(OSVERSIONINFO *oOS_version)
 	oOS_version->dwBuildNumber = 0;
 
 	// Define registry keys
-	HKEY			RegKey = nullptr;
-	DWORD			dwDataMajor = 0;
-	DWORD			dwDataMinor = 0;
-	unsigned long	iSize = sizeof(DWORD);
-	DWORD			dwType = 0;
+	HKEY RegKey = nullptr;
+	DWORD dwDataMajor = 0;
+	DWORD dwDataMinor = 0;
+	unsigned long iSize = sizeof(DWORD);
+	DWORD dwType = 0;
 
 	// Get version
-	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_ALL_ACCESS, &RegKey) == ERROR_SUCCESS)
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &RegKey) == ERROR_SUCCESS)
 	{
 		if (RegQueryValueExA(RegKey, "CurrentMajorVersionNumber", nullptr, &dwType, (LPBYTE)&dwDataMajor, &iSize) == ERROR_SUCCESS &&
 			RegQueryValueExA(RegKey, "CurrentMinorVersionNumber", nullptr, &dwType, (LPBYTE)&dwDataMinor, &iSize) == ERROR_SUCCESS)
@@ -324,11 +325,11 @@ void Logging::GetVersionFile(OSVERSIONINFO *oOS_version)
 	strcat_s(buffer, MAX_PATH, "\\kernel32.dll");
 
 	// Define registry keys
-	DWORD  verHandle = 0;
-	UINT   size = 0;
+	DWORD verHandle = 0;
+	UINT size = 0;
 	LPBYTE lpBuffer = nullptr;
 	LPCSTR szVersionFile = buffer;
-	DWORD  verSize = GetFileVersionInfoSizeA(szVersionFile, &verHandle);
+	DWORD verSize = GetFileVersionInfoSizeA(szVersionFile, &verHandle);
 
 	// GetVersion from a file
 	if (verSize != 0)
@@ -355,6 +356,22 @@ void Logging::GetVersionFile(OSVERSIONINFO *oOS_version)
 	}
 }
 
+// Get Windows Operating System version number from kernel32.dll
+void Logging::GetProductName(char *Name, DWORD Size)
+{
+	strcpy_s(Name, Size, "");
+
+	// Define registry keys
+	HKEY RegKey = nullptr;
+
+	// Get version
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &RegKey) == ERROR_SUCCESS)
+	{
+		RegQueryValueExA(RegKey, "ProductName", NULL, NULL, (LPBYTE)Name, &Size);
+		RegCloseKey(RegKey);
+	}
+}
+
 // Log hardware manufacturer
 void Logging::LogComputerManufacturer()
 {
@@ -371,7 +388,7 @@ void Logging::LogComputerManufacturer()
 	UINT uIndex, uStart, uEnd, uString, uState = 0;
 	HRESULT hr;
 
-	if ((hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_QUERY_VALUE, &hkData)) != ERROR_SUCCESS)
+	if ((hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_READ, &hkData)) != ERROR_SUCCESS)
 	{
 		return;
 	}
@@ -536,7 +553,7 @@ void Logging::LogOSVersion()
 	GetOsVersion(&oOS_version);
 	std::wstring ws(L" " + std::wstring(oOS_version.szCSDVersion));
 	std::string str(ws.begin(), ws.end());
-	char *ServicePack = &str[0];
+	char *ServicePack = (str.size() > 1) ? &str[0] : "";
 
 	// GetVersion from registry which is more relayable for Windows 10
 	GetVersionReg(&rOS_version);
@@ -566,96 +583,8 @@ void Logging::LogOSVersion()
 	}
 
 	// Get OS string name
-	char *sOSName = "Unknown platform";
-	if (IsWindowsServer())
-	{
-		sOSName = "Unknown Windows Server";
-		switch (oOS_version.dwMajorVersion)
-		{
-		case 5:
-			switch (oOS_version.dwMinorVersion)
-			{
-			case 0:
-				sOSName = "Windows 2000 Server";
-				break;
-			case 2:
-				sOSName = (GetSystemMetrics(SM_SERVERR2) == 0) ? "Windows Server 2003" : "Windows Server 2003 R2";
-				break;
-			}
-			break;
-		case 6:
-			switch (oOS_version.dwMinorVersion)
-			{
-			case 0:
-				sOSName = "Windows Server 2008";
-				break;
-			case 1:
-				sOSName = "Windows Server 2008 R2";
-				break;
-			case 2:
-				sOSName = "Windows Server 2012";
-				break;
-			case 3:
-				sOSName = "Windows Server 2012 R2";
-				break;
-			}
-			break;
-		case 10:
-			switch (oOS_version.dwMinorVersion)
-			{
-			case 0:
-				sOSName = "Windows Server 2016";
-				break;
-			}
-			break;
-		}
-	}
-	else
-	{
-		sOSName = "Unknown Windows Desktop";
-		switch (oOS_version.dwMajorVersion)
-		{
-		case 5:
-			switch (oOS_version.dwMinorVersion)
-			{
-			case 0:
-				sOSName = "Windows 2000";
-				break;
-			case 1:
-				sOSName = "Windows XP";
-				break;
-			case 2:
-				sOSName = "Windows XP Professional"; // Windows XP Professional x64
-				break;
-			}
-			break;
-		case 6:
-			switch (oOS_version.dwMinorVersion)
-			{
-			case 0:
-				sOSName = "Windows Vista";
-				break;
-			case 1:
-				sOSName = "Windows 7";
-				break;
-			case 2:
-				sOSName = "Windows 8";
-				break;
-			case 3:
-				sOSName = "Windows 8.1";
-				break;
-			}
-			break;
-		case 10:
-			switch (oOS_version.dwMinorVersion)
-			{
-			case 0:
-				sOSName = "Windows 10";
-				break;
-			}
-			break;
-		}
-	}
+	char sOSName[MAX_PATH];
+	GetProductName(sOSName, MAX_PATH);
 
 	// Get bitness (32bit vs 64bit)
 	SYSTEM_INFO SystemInfo;
