@@ -745,3 +745,22 @@ void Logging::LogGameType()
 	LogGOGGameType();
 	LogSteamGameType();
 }
+
+// Log environment variable
+void Logging::LogEnvironmentVariable(const char* var)
+{
+	const DWORD size = GetEnvironmentVariableA(var, nullptr, 0);
+	std::string value(size, 0);
+	if (!value.empty())
+	{
+		GetEnvironmentVariableA(var, &value.front(), size);
+		value.pop_back();
+	}
+	Log() << "Environment variable " << var << " = \"" << value.c_str() << '"';
+}
+
+// Log compatibility layer
+void Logging::LogCompatLayer()
+{
+	LogEnvironmentVariable("__COMPAT_LAYER");
+}

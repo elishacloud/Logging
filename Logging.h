@@ -314,6 +314,8 @@ namespace Logging
 	void LogComputerManufacturer();
 	void LogVideoCard();
 	void LogGameType();
+	void LogEnvironmentVariable(const char* var);
+	void LogCompatLayer();
 }
 
 template <typename T>
