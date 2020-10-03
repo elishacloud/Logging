@@ -3,7 +3,10 @@
 #ifndef SHARED_LOGGING_MODULE
 #define SHARED_LOGGING_MODULE
 
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <fstream>
 #include <iostream>
 #include <ostream>
