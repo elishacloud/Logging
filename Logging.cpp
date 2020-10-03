@@ -40,6 +40,10 @@
 #include <tlhelp32.h>
 #include "Logging.h"
 
+#ifndef min
+#define min(a,b)            (((a) < (b)) ? (a) : (b))
+#endif
+
 namespace Logging
 {
 	bool EnableLogging = true;
