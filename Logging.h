@@ -41,18 +41,24 @@
 	}
 #endif
 
+#ifdef DEBUGLOGS
+#define LOG_DEBUG Compat::Log()
+#define LOG_FUNC(...) Compat::LogFunc logFunc(__VA_ARGS__)
+#define LOG_RESULT(...) logFunc.setResult(__VA_ARGS__)
+#else
+#define LOG_DEBUG if constexpr (false) Compat::Log()
+#define LOG_FUNC(...)
+#define LOG_RESULT(...) __VA_ARGS__
+#endif
+
+#define LOG_CONST_CASE(constant) case constant: return os << #constant;
+
 extern std::ofstream LOG;
 
+std::ostream& operator<<(std::ostream& os, std::nullptr_t);
 std::ostream& operator<<(std::ostream& os, const char* str);
 std::ostream& operator<<(std::ostream& os, const unsigned char* data);
 std::ostream& operator<<(std::ostream& os, const WCHAR* wstr);
-std::ostream& operator<<(std::ostream& os, const DEVMODEA& dm);
-std::ostream& operator<<(std::ostream& os, const DEVMODEW& dm);
-std::ostream& operator<<(std::ostream& os, const RECT& rect);
-std::ostream& operator<<(std::ostream& os, HDC__& dc);
-std::ostream& operator<<(std::ostream& os, HWND__& hwnd);
-std::ostream& operator<<(std::ostream& os, const CWPSTRUCT& cwrp);
-std::ostream& operator<<(std::ostream& os, const CWPRETSTRUCT& cwrp);
 
 namespace Logging
 {
@@ -69,6 +75,103 @@ namespace Logging
 
 	using ::operator<<;
 
+	namespace detail
+	{
+		using ::operator<<;
+
+		template <typename Elem>
+		struct Array
+		{
+			Array(const Elem* elem, const unsigned long size) : elem(elem), size(size) {}
+			const Elem* elem;
+			const unsigned long size;
+		};
+
+		template <typename T>
+		struct Hex
+		{
+			explicit Hex(T val) : val(val) {}
+			T val;
+		};
+
+		struct HexByte
+		{
+			explicit HexByte(BYTE val) : val(val) {}
+			BYTE val;
+		};
+
+		template <typename T>
+		struct Out
+		{
+			explicit Out(T val) : val(val) {}
+			T val;
+		};
+
+		class LogParams;
+
+		class LogFirstParam
+		{
+		public:
+			LogFirstParam(std::ostream& os) : m_os(os) {}
+			template <typename T> LogParams operator<<(const T& val) { m_os << val; return LogParams(m_os); }
+
+		protected:
+			std::ostream& m_os;
+		};
+
+		class LogParams
+		{
+		public:
+			LogParams(std::ostream& os) : m_os(os) {}
+			template <typename T> LogParams& operator<<(const T& val) { m_os << ',' << val; return *this; }
+
+			operator std::ostream& () { return m_os; }
+
+		private:
+			std::ostream& m_os;
+		};
+
+		template <typename Elem>
+		std::ostream& operator<<(std::ostream& os, Array<Elem> array)
+		{
+			os << '[';
+			if (Log::isPointerDereferencingAllowed())
+			{
+				if (0 != array.size)
+				{
+					os << array.elem[0];
+				}
+				for (unsigned long i = 1; i < array.size; ++i)
+				{
+					os << ',' << array.elem[i];
+				}
+			}
+			return os << ']';
+		}
+
+		template <typename T>
+		std::ostream& operator<<(std::ostream& os, Hex<T> hex)
+		{
+			return os << "0x" << std::hex << hex.val << std::dec;
+		}
+
+		inline std::ostream& operator<<(std::ostream& os, HexByte hexByte)
+		{
+			os.fill('0');
+			os.width(2);
+			return os << std::hex << static_cast<DWORD>(hexByte.val) << std::dec;
+		}
+
+		template <typename T>
+		std::ostream& operator<<(std::ostream& os, Out<T> out)
+		{
+			++Log::s_outParamDepth;
+			os << out.val;
+			--Log::s_outParamDepth;
+			return os;
+		}
+	}
+
 	template <typename Num>
 	struct Hex
 	{
@@ -77,6 +180,11 @@ namespace Logging
 	};
 
 	template <typename Num> Hex<Num> hex(Num val) { return Hex<Num>(val); }
+
+	inline detail::Array<detail::HexByte> hexDump(const void* buf, const unsigned long size)
+	{
+		return detail::Array<detail::HexByte>(static_cast<const detail::HexByte*>(buf), size);
+	}
 
 	template <typename Elem>
 	struct Array

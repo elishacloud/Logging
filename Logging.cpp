@@ -48,7 +48,7 @@ namespace Logging
 {
 	bool EnableLogging = true;
 
-	void GetOsVersion(RTL_OSVERSIONINFOEXW *);
+	void GetOsVersion(OSVERSIONINFOA*);
 	void GetVersionReg(OSVERSIONINFO *);
 	void GetVersionFile(OSVERSIONINFO *);
 	void GetProductName(char *Name, DWORD Size);
@@ -71,6 +71,11 @@ namespace
 			<< dm.dmDisplayFrequency
 			<< dm.dmDisplayFlags;
 	}
+}
+
+std::ostream& operator<<(std::ostream& os, std::nullptr_t)
+{
+	return os << "null";
 }
 
 std::ostream& operator<<(std::ostream& os, const char* str)
@@ -107,58 +112,6 @@ std::ostream& operator<<(std::ostream& os, const WCHAR* wstr)
 
 	CStringA str(wstr);
 	return os << '"' << static_cast<const char*>(str) << '"';
-}
-
-std::ostream& operator<<(std::ostream& os, const DEVMODEA& dm)
-{
-	return streamDevMode(os, dm);
-}
-
-std::ostream& operator<<(std::ostream& os, const DEVMODEW& dm)
-{
-	return streamDevMode(os, dm);
-}
-
-std::ostream& operator<<(std::ostream& os, const RECT& rect)
-{
-	return Logging::LogStruct(os)
-		<< rect.left
-		<< rect.top
-		<< rect.right
-		<< rect.bottom;
-}
-
-std::ostream& operator<<(std::ostream& os, HDC__& dc)
-{
-	return os << "DC(" << static_cast<void*>(&dc) << ',' << WindowFromDC(&dc) << ')';
-}
-
-std::ostream& operator<<(std::ostream& os, HWND__& hwnd)
-{
-	char name[256] = {};
-	GetClassNameA(&hwnd, name, sizeof(name));
-	RECT rect = {};
-	GetWindowRect(&hwnd, &rect);
-	return os << "WND(" << static_cast<void*>(&hwnd) << ',' << name << ',' << rect << ')';
-}
-
-std::ostream& operator<<(std::ostream& os, const CWPSTRUCT& cwrp)
-{
-	return Logging::LogStruct(os)
-		<< Logging::hex(cwrp.message)
-		<< cwrp.hwnd
-		<< Logging::hex(cwrp.wParam)
-		<< Logging::hex(cwrp.lParam);
-}
-
-std::ostream& operator<<(std::ostream& os, const CWPRETSTRUCT& cwrp)
-{
-	return Logging::LogStruct(os)
-		<< Logging::hex(cwrp.message)
-		<< cwrp.hwnd
-		<< Logging::hex(cwrp.wParam)
-		<< Logging::hex(cwrp.lParam)
-		<< Logging::hex(cwrp.lResult);
 }
 
 namespace Logging
@@ -226,32 +179,16 @@ void Logging::LogProcessNameAndPID()
 }
 
 // Get Windows Operating System version number from RtlGetVersion
-void Logging::GetOsVersion(RTL_OSVERSIONINFOEXW* pk_OsVer)
+void Logging::GetOsVersion(OSVERSIONINFOA* pk_OsVer)
 {
 	// Initialize variables
-	pk_OsVer->dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOEXW);
-	ZeroMemory(&(pk_OsVer->szCSDVersion), 128 * sizeof(WCHAR));
+	pk_OsVer->dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
+	ZeroMemory(&(pk_OsVer->szCSDVersion), 128 * sizeof(CHAR));
 	pk_OsVer->dwMajorVersion = 0;
 	pk_OsVer->dwMinorVersion = 0;
 	pk_OsVer->dwBuildNumber = 0;
 
-	// Load ntdll.dll
-	HMODULE Module = LoadLibraryA("ntdll.dll");
-	if (!Module)
-	{
-		Log() << "Failed to load ntdll.dll!";
-		return;
-	}
-
-	// Call RtlGetVersion API
-	typedef LONG(WINAPI* tRtlGetVersion)(RTL_OSVERSIONINFOEXW*);
-	tRtlGetVersion f_RtlGetVersion = (tRtlGetVersion)GetProcAddress(Module, "RtlGetVersion");
-
-	// Get version data
-	if (f_RtlGetVersion)
-	{
-		f_RtlGetVersion(pk_OsVer);
-	}
+	GetVersionEx(pk_OsVer);
 }
 
 // Get Windows Operating System version number from the registry
@@ -553,13 +490,12 @@ void Logging::LogOSVersion()
 	}
 
 	// Declare vars
-	RTL_OSVERSIONINFOEXW oOS_version;
+	OSVERSIONINFOA oOS_version;
 	OSVERSIONINFO fOS_version, rOS_version;
 
 	// GetVersion from RtlGetVersion which is needed for some cases (Need for Speed III)
 	GetOsVersion(&oOS_version);
-	std::wstring ws(L" " + std::wstring(oOS_version.szCSDVersion));
-	std::string str(ws.begin(), ws.end());
+	std::string str(" " + std::string(oOS_version.szCSDVersion));
 	char *ServicePack = (str.size() > 1) ? &str[0] : "";
 
 	// GetVersion from registry which is more relayable for Windows 10
@@ -644,7 +580,10 @@ DWORD Logging::GetPPID()
 	}
 	__finally
 	{
-		if (hSnapshot != INVALID_HANDLE_VALUE) CloseHandle(hSnapshot);
+		if (hSnapshot != INVALID_HANDLE_VALUE)
+		{
+			CloseHandle(hSnapshot);
+		}
 	}
 	return ppid;
 }
@@ -661,7 +600,7 @@ bool Logging::CheckProcessNameFromPID(DWORD pid, char *name)
 
 	// Get process path
 	char pidname[MAX_PATH];
-	DWORD size = GetProcessImageFileNameA(hProcess, (LPSTR)&pidname, MAX_PATH);
+	DWORD size = GetProcessImageFileName(hProcess, (LPSTR)&pidname, MAX_PATH);
 	if (!size)
 	{
 		return false;
