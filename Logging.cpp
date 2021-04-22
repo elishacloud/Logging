@@ -40,6 +40,11 @@
 #include <tlhelp32.h>
 #include "Logging.h"
 
+#if (PSAPI_VERSION >= 2)
+#undef GetProcessImageFileName
+#define GetProcessImageFileName GetProcessImageFileNameA
+#endif
+
 #ifndef min
 #define min(a,b)            (((a) < (b)) ? (a) : (b))
 #endif
@@ -188,7 +193,19 @@ void Logging::GetOsVersion(OSVERSIONINFOA* pk_OsVer)
 	pk_OsVer->dwMinorVersion = 0;
 	pk_OsVer->dwBuildNumber = 0;
 
-	GetVersionEx(pk_OsVer);
+	// Call GetVersionExA API
+	typedef BOOL(WINAPI *GetVersionExAProc)(_Inout_ LPOSVERSIONINFOA lpVersionInformation);
+	HMODULE Module = LoadLibraryA("Kernel32.dll");
+	GetVersionExAProc pGetVersionExA = (GetVersionExAProc)GetProcAddress(Module, "GetVersionExA");
+
+	// Get version data
+	if (!pGetVersionExA)
+	{
+		Log() << __FUNCTION__ << " Waring: Failed to call 'GetVersionExA'!";
+		return;
+	}
+
+	pGetVersionExA(pk_OsVer);
 }
 
 // Get Windows Operating System version number from the registry
