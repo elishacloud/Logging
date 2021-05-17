@@ -196,9 +196,14 @@ void Logging::GetOsVersion(OSVERSIONINFOA* pk_OsVer)
 	// Call GetVersionExA API
 	typedef BOOL(WINAPI *GetVersionExAProc)(_Inout_ LPOSVERSIONINFOA lpVersionInformation);
 	HMODULE Module = LoadLibraryA("Kernel32.dll");
-	GetVersionExAProc pGetVersionExA = (GetVersionExAProc)GetProcAddress(Module, "GetVersionExA");
+	if (!Module)
+	{
+		Log() << __FUNCTION__ << " Waring: Failed to load 'Kernel32.dll'!";
+		return;
+	}
 
 	// Get version data
+	GetVersionExAProc pGetVersionExA = (GetVersionExAProc)GetProcAddress(Module, "GetVersionExA");
 	if (!pGetVersionExA)
 	{
 		Log() << __FUNCTION__ << " Waring: Failed to call 'GetVersionExA'!";
@@ -597,7 +602,7 @@ DWORD Logging::GetPPID()
 	}
 	__finally
 	{
-		if (hSnapshot != INVALID_HANDLE_VALUE)
+		if (hSnapshot && hSnapshot != INVALID_HANDLE_VALUE)
 		{
 			CloseHandle(hSnapshot);
 		}
