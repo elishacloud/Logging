@@ -103,6 +103,11 @@ std::ostream& operator<<(std::ostream& os, const unsigned char* data)
 	return os << static_cast<const void*>(data);
 }
 
+std::ostream& operator<<(std::ostream& os, std::wstring wstr)
+{
+	return os << static_cast<const char*>(std::string(wstr.begin(), wstr.end()).c_str());
+}
+
 std::ostream& operator<<(std::ostream& os, const WCHAR* wstr)
 {
 	if (!wstr)
@@ -115,9 +120,7 @@ std::ostream& operator<<(std::ostream& os, const WCHAR* wstr)
 		return os << static_cast<const void*>(wstr);
 	}
 
-	std::wstring w_str(wstr);
-	std::string str(w_str.begin(), w_str.end());
-	return os << static_cast<const char*>(str.c_str());
+	return os << std::wstring(wstr);
 }
 
 namespace Logging
