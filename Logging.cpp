@@ -34,7 +34,7 @@
 #endif
 
 #include <windows.h>
-#include <atlstr.h>
+#include <Shlwapi.h>
 #include <VersionHelpers.h>
 #include <psapi.h>
 #include <tlhelp32.h>
@@ -115,8 +115,9 @@ std::ostream& operator<<(std::ostream& os, const WCHAR* wstr)
 		return os << static_cast<const void*>(wstr);
 	}
 
-	CStringA str(wstr);
-	return os << '"' << static_cast<const char*>(str) << '"';
+	std::wstring w_str(wstr);
+	std::string str(w_str.begin(), w_str.end());
+	return os << static_cast<const char*>(str.c_str());
 }
 
 namespace Logging
