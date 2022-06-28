@@ -626,7 +626,7 @@ bool Logging::CheckProcessNameFromPID(DWORD pid, char *name)
 
 	// Get process path
 	char pidname[MAX_PATH];
-	DWORD size = GetProcessImageFileName(hProcess, (LPSTR)&pidname, MAX_PATH);
+	DWORD size = GetProcessImageFileNameA(hProcess, (LPSTR)&pidname, MAX_PATH);
 	if (!size)
 	{
 		return false;
