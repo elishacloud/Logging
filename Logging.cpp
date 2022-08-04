@@ -34,16 +34,21 @@
 #endif
 
 #include <windows.h>
-#include <Shlwapi.h>
-#include <VersionHelpers.h>
 #include <psapi.h>
+#include <shlwapi.h>
+#include <VersionHelpers.h>
 #include <tlhelp32.h>
 #include "Logging.h"
 
-#if (PSAPI_VERSION >= 2)
-#undef GetProcessImageFileName
-#define GetProcessImageFileName GetProcessImageFileNameA
-#endif
+DWORD WINAPI GetProcessImageFileNameA(HANDLE hProcess, LPWSTR lpImageFileName, DWORD nSize)
+{
+	return GetProcessImageFileNameW(hProcess, lpImageFileName, nSize);
+}
+
+DWORD WINAPI GetProcessImageFileNameW(HANDLE hProcess, LPSTR lpImageFileName, DWORD nSize)
+{
+	return GetProcessImageFileNameA(hProcess, lpImageFileName, nSize);
+}
 
 #ifndef min
 #define min(a,b)            (((a) < (b)) ? (a) : (b))
@@ -626,7 +631,7 @@ bool Logging::CheckProcessNameFromPID(DWORD pid, char *name)
 
 	// Get process path
 	char pidname[MAX_PATH];
-	DWORD size = GetProcessImageFileNameA(hProcess, (LPSTR)&pidname, MAX_PATH);
+	DWORD size = GetProcessImageFileName(hProcess, (LPSTR)&pidname, MAX_PATH);
 	if (!size)
 	{
 		return false;
