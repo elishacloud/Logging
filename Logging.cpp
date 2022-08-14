@@ -83,11 +83,6 @@ namespace
 	}
 }
 
-std::ostream& operator<<(std::ostream& os, std::nullptr_t)
-{
-	return os << "null";
-}
-
 std::ostream& operator<<(std::ostream& os, const char* str)
 {
 	if (!str)
@@ -108,12 +103,7 @@ std::ostream& operator<<(std::ostream& os, const unsigned char* data)
 	return os << static_cast<const void*>(data);
 }
 
-std::ostream& operator<<(std::ostream& os, std::wstring wstr)
-{
-	return os << static_cast<const char*>(std::string(wstr.begin(), wstr.end()).c_str());
-}
-
-std::ostream& operator<<(std::ostream& os, const WCHAR* wstr)
+std::ostream& operator<<(std::ostream& os, const wchar_t* wstr)
 {
 	if (!wstr)
 	{
@@ -125,7 +115,22 @@ std::ostream& operator<<(std::ostream& os, const WCHAR* wstr)
 		return os << static_cast<const void*>(wstr);
 	}
 
-	return os << std::wstring(wstr);
+	return os << static_cast<std::wstring>(std::wstring(wstr));
+}
+
+std::ostream& operator<<(std::ostream& os, std::nullptr_t)
+{
+	return os << "null";
+}
+
+std::ostream& operator<<(std::ostream& os, std::string str)
+{
+	return os << static_cast<const char*>(str.c_str());
+}
+
+std::ostream& operator<<(std::ostream& os, std::wstring wstr)
+{
+	return os << static_cast<std::string>(std::string(wstr.begin(), wstr.end()));
 }
 
 namespace Logging
