@@ -130,7 +130,11 @@ std::ostream& operator<<(std::ostream& os, std::string str)
 
 std::ostream& operator<<(std::ostream& os, std::wstring wstr)
 {
-	return os << static_cast<std::string>(std::string(wstr.begin(), wstr.end()));
+	size_t size = wstr.size() + 1;
+	std::string str;
+	str.resize(size, '\0');
+	wcstombs_s(nullptr, &str[0], size, wstr.c_str(), _TRUNCATE);
+	return os << str;
 }
 
 namespace Logging
