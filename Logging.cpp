@@ -40,14 +40,91 @@
 #include <tlhelp32.h>
 #include "Logging.h"
 
-DWORD WINAPI GetProcessImageFileNameA(HANDLE hProcess, LPWSTR lpImageFileName, DWORD nSize)
+// Function pointers for GetProcessImageFileNameA and GetProcessImageFileNameW
+typedef DWORD(WINAPI* GetProcessImageFileNameA_t)(HANDLE, LPSTR, DWORD);
+typedef DWORD(WINAPI* GetProcessImageFileNameW_t)(HANDLE, LPWSTR, DWORD);
+
+static GetProcessImageFileNameA_t realGetProcessImageFileNameA = nullptr;
+static GetProcessImageFileNameW_t realGetProcessImageFileNameW = nullptr;
+
+// Initialization to load the real GetProcessImageFileName functions
+void InitializeGetProcessImageFileName()
 {
-	return GetProcessImageFileNameW(hProcess, lpImageFileName, nSize);
+	// Try to load from kernel32.dll first
+	HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
+	if (hKernel32)
+	{
+		// Check for K32-prefixed functions first in kernel32.dll
+		realGetProcessImageFileNameA = (GetProcessImageFileNameA_t)GetProcAddress(hKernel32, "K32GetProcessImageFileNameA");
+		realGetProcessImageFileNameW = (GetProcessImageFileNameW_t)GetProcAddress(hKernel32, "K32GetProcessImageFileNameW");
+
+		// If K32-prefixed versions are not found, try the original names
+		if (!realGetProcessImageFileNameA)
+		{
+			realGetProcessImageFileNameA = (GetProcessImageFileNameA_t)GetProcAddress(hKernel32, "GetProcessImageFileNameA");
+		}
+		if (!realGetProcessImageFileNameW)
+		{
+			realGetProcessImageFileNameW = (GetProcessImageFileNameW_t)GetProcAddress(hKernel32, "GetProcessImageFileNameW");
+		}
+	}
+
+	// If the function wasn't found in kernel32.dll, fall back to psapi.dll
+	if (!realGetProcessImageFileNameA || !realGetProcessImageFileNameW)
+	{
+		HMODULE hPsapi = LoadLibraryW(L"psapi.dll");
+		if (hPsapi)
+		{
+			// Check for K32-prefixed functions first in psapi.dll (for completeness, although unlikely)
+			if (!realGetProcessImageFileNameA)
+			{
+				realGetProcessImageFileNameA = (GetProcessImageFileNameA_t)GetProcAddress(hPsapi, "K32GetProcessImageFileNameA");
+			}
+			if (!realGetProcessImageFileNameW)
+			{
+				realGetProcessImageFileNameW = (GetProcessImageFileNameW_t)GetProcAddress(hPsapi, "K32GetProcessImageFileNameW");
+			}
+
+			// If K32-prefixed versions are not found, try the original names in psapi.dll
+			if (!realGetProcessImageFileNameA)
+			{
+				realGetProcessImageFileNameA = (GetProcessImageFileNameA_t)GetProcAddress(hPsapi, "GetProcessImageFileNameA");
+			}
+			if (!realGetProcessImageFileNameW)
+			{
+				realGetProcessImageFileNameW = (GetProcessImageFileNameW_t)GetProcAddress(hPsapi, "GetProcessImageFileNameW");
+			}
+		}
+	}
 }
 
-DWORD WINAPI GetProcessImageFileNameW(HANDLE hProcess, LPSTR lpImageFileName, DWORD nSize)
+// The replacement functions
+DWORD NewGetProcessImageFileName(HANDLE hProcess, LPSTR lpImageFileName, DWORD nSize)
 {
-	return GetProcessImageFileNameA(hProcess, lpImageFileName, nSize);
+	if (!realGetProcessImageFileNameA)
+	{
+		InitializeGetProcessImageFileName();
+	}
+	if (realGetProcessImageFileNameA)
+	{
+		return realGetProcessImageFileNameA(hProcess, lpImageFileName, nSize);
+	}
+	SetLastError(ERROR_PROC_NOT_FOUND);
+	return 0;
+}
+
+DWORD NewGetProcessImageFileName(HANDLE hProcess, LPWSTR lpImageFileName, DWORD nSize)
+{
+	if (!realGetProcessImageFileNameW)
+	{
+		InitializeGetProcessImageFileName();
+	}
+	if (realGetProcessImageFileNameW)
+	{
+		return realGetProcessImageFileNameW(hProcess, lpImageFileName, nSize);
+	}
+	SetLastError(ERROR_PROC_NOT_FOUND);
+	return 0;
 }
 
 #ifndef min
@@ -640,7 +717,7 @@ bool Logging::CheckProcessNameFromPID(DWORD pid, char *name)
 
 	// Get process path
 	char pidname[MAX_PATH];
-	DWORD size = GetProcessImageFileName(hProcess, (LPSTR)&pidname, MAX_PATH);
+	DWORD size = NewGetProcessImageFileName(hProcess, (LPSTR)&pidname, MAX_PATH);
 	if (!size)
 	{
 		return false;
