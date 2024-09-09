@@ -7,6 +7,8 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+#include <chrono>
+#include <sstream>
 #include <fstream>
 #include <iostream>
 #include <ostream>
@@ -419,6 +421,28 @@ namespace Logging
 		--Log::s_outParamDepth;
 		return os;
 	}
+
+	// Wrapper class for logging time lapse
+	class GetTimeLapseInMS
+	{
+	public:
+		GetTimeLapseInMS(const std::chrono::steady_clock::time_point& startTime)
+			: startTime(startTime) {}
+
+		// Overload the '<<' operator to format the time lapse as "XXms"
+		friend std::ostream& operator<<(std::ostream& os, const GetTimeLapseInMS& timeLapse)
+		{
+			// Calculate the difference in time
+			auto currentTime = std::chrono::steady_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - timeLapse.startTime).count();
+
+			// Output the time lapse in "XXms" format
+			return os << duration << "ms";
+		}
+
+	private:
+		const std::chrono::steady_clock::time_point& startTime;
+	};
 
 	void LogFormat(char * fmt, ...);
 	void LogFormat(wchar_t * fmt, ...);
