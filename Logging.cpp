@@ -231,11 +231,16 @@ void Logging::LogFormat(char * fmt, ...)
 	va_list ap;
 	va_start(ap, fmt);
 	auto size = vsnprintf(nullptr, 0, fmt, ap);
+	va_end(ap);
+
 	std::string output(size + 1, '\0');
+
+	// Reinitialize va_list for the second usage
+	va_start(ap, fmt);
 	vsprintf_s(&output[0], size + 1, fmt, ap);
 	va_end(ap);
 
-	// Log formated text
+	// Log formatted text
 	Log() << output.c_str();
 }
 
@@ -251,11 +256,16 @@ void Logging::LogFormat(wchar_t * fmt, ...)
 	va_start(ap, fmt);
 #pragma warning(suppress: 4996)
 	auto size = _vsnwprintf(nullptr, 0, fmt, ap);
+	va_end(ap);
+
 	std::wstring output(size + 1, '\0');
+
+	// Reinitialize va_list for the second usage
+	va_start(ap, fmt);
 	vswprintf_s(&output[0], size + 1, fmt, ap);
 	va_end(ap);
 
-	// Log formated text
+	// Log formatted text
 	Log() << output.c_str();
 }
 
