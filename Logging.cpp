@@ -15,18 +15,6 @@
 *
 * Code taken from DDrawCompat for logging
 * https://github.com/narzoul/DDrawCompat/
-*
-* Code in GetOSVersion and GetVersionReg functions taken from source code found in DirectSoundControl
-* https://github.com/nRaecheR/DirectSoundControl
-*
-* Code in GetVersionFile function taken from source code found on stackoverflow.com
-* https://stackoverflow.com/questions/940707/how-do-i-programmatically-get-the-version-of-a-dll-or-exe-file
-*
-* Code in LogComputerManufacturer function taken from source code found on rohitab.com
-* http://www.rohitab.com/discuss/topic/35915-win32-api-to-get-system-information/
-*
-* Code in GetPPID taken from mattn GitHub project
-* https://gist.github.com/mattn/253013/d47b90159cf8ffa4d92448614b748aa1d235ebe4
 */
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -34,6 +22,7 @@
 #endif
 
 #include <windows.h>
+#include <vector>
 #include <psapi.h>
 #include <shlwapi.h>
 #include <VersionHelpers.h>
@@ -48,7 +37,7 @@ static GetProcessImageFileNameA_t realGetProcessImageFileNameA = nullptr;
 static GetProcessImageFileNameW_t realGetProcessImageFileNameW = nullptr;
 
 // Initialization to load the real GetProcessImageFileName functions
-void InitializeGetProcessImageFileName()
+static void InitializeGetProcessImageFileName()
 {
 	// Try to load from kernel32.dll first
 	HMODULE hKernel32 = GetModuleHandleW(L"kernel32.dll");
@@ -99,7 +88,8 @@ void InitializeGetProcessImageFileName()
 }
 
 // The replacement functions
-DWORD NewGetProcessImageFileName(HANDLE hProcess, LPSTR lpImageFileName, DWORD nSize)
+#pragma warning(suppress: 4505)
+static DWORD NewGetProcessImageFileName(HANDLE hProcess, LPSTR lpImageFileName, DWORD nSize)
 {
 	if (!realGetProcessImageFileNameA)
 	{
@@ -113,7 +103,8 @@ DWORD NewGetProcessImageFileName(HANDLE hProcess, LPSTR lpImageFileName, DWORD n
 	return 0;
 }
 
-DWORD NewGetProcessImageFileName(HANDLE hProcess, LPWSTR lpImageFileName, DWORD nSize)
+#pragma warning(suppress: 4505)
+static DWORD NewGetProcessImageFileName(HANDLE hProcess, LPWSTR lpImageFileName, DWORD nSize)
 {
 	if (!realGetProcessImageFileNameW)
 	{
@@ -138,8 +129,9 @@ namespace Logging
 	void GetOsVersion(OSVERSIONINFOA*);
 	void GetVersionReg(OSVERSIONINFO *);
 	void GetVersionFile(OSVERSIONINFO *);
-	void GetProductName(char *Name, DWORD Size);
-	DWORD GetPPID();
+	void GetProductNameFromRegistry(char *Name, DWORD Size);
+	void GetProductNameFromVersion(OSVERSIONINFOA& inVersion, char* outName, size_t outSize);
+	DWORD GetParentProcessId();
 	bool CheckProcessNameFromPID(DWORD pid, char *name);
 	bool CheckEachParentFolder(char *file, char *path);
 	void LogGOGGameType();
@@ -289,158 +281,275 @@ void Logging::LogProcessNameAndPID()
 }
 
 // Get Windows Operating System version number from RtlGetVersion
-void Logging::GetOsVersion(OSVERSIONINFOA* pk_OsVer)
+void Logging::GetOsVersion(OSVERSIONINFOA* outVersion)
 {
-	// Initialize variables
-	pk_OsVer->dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
-	ZeroMemory(&(pk_OsVer->szCSDVersion), 128 * sizeof(CHAR));
-	pk_OsVer->dwMajorVersion = 0;
-	pk_OsVer->dwMinorVersion = 0;
-	pk_OsVer->dwBuildNumber = 0;
-
-	// Call GetVersionExA API
-	typedef BOOL(WINAPI *GetVersionExAProc)(_Inout_ LPOSVERSIONINFOA lpVersionInformation);
-	HMODULE Module = LoadLibraryA("Kernel32.dll");
-	if (!Module)
+	if (!outVersion)
 	{
-		Log() << __FUNCTION__ << " Waring: Failed to load 'Kernel32.dll'!";
 		return;
 	}
 
-	// Get version data
-	GetVersionExAProc pGetVersionExA = (GetVersionExAProc)GetProcAddress(Module, "GetVersionExA");
+	// Clear and initialize the version info struct
+	ZeroMemory(outVersion, sizeof(OSVERSIONINFOA));
+	outVersion->dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
+
+	// Try to get a handle to kernel32.dll without increasing the ref count
+	HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+	if (!hKernel32)
+	{
+		Log() << __FUNCTION__ << " Warning: kernel32.dll not found.";
+		return;
+	}
+
+	// Try to locate the GetVersionExA function
+	using GetVersionExA_t = BOOL(WINAPI*)(LPOSVERSIONINFOA);
+	auto pGetVersionExA = reinterpret_cast<GetVersionExA_t>(GetProcAddress(hKernel32, "GetVersionExA"));
 	if (!pGetVersionExA)
 	{
-		Log() << __FUNCTION__ << " Waring: Failed to call 'GetVersionExA'!";
+		Log() << __FUNCTION__ << " Warning: GetVersionExA not available.";
 		return;
 	}
 
-	pGetVersionExA(pk_OsVer);
+	// Retrieve version information
+	if (!pGetVersionExA(outVersion))
+	{
+		Log() << __FUNCTION__ << " Warning: GetVersionExA call failed.";
+	}
 }
 
 // Get Windows Operating System version number from the registry
-void Logging::GetVersionReg(OSVERSIONINFO *oOS_version)
+void Logging::GetVersionReg(OSVERSIONINFO* outVersion)
 {
-	// Initialize variables
-	oOS_version->dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-	oOS_version->dwMajorVersion = 0;
-	oOS_version->dwMinorVersion = 0;
-	oOS_version->dwBuildNumber = 0;
-
-	// Define registry keys
-	HKEY RegKey = nullptr;
-	DWORD dwDataMajor = 0;
-	DWORD dwDataMinor = 0;
-	unsigned long iSize = sizeof(DWORD);
-	DWORD dwType = 0;
-
-	// Get version
-	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &RegKey) == ERROR_SUCCESS)
+	if (!outVersion)
 	{
-		if (RegQueryValueExA(RegKey, "CurrentMajorVersionNumber", nullptr, &dwType, (LPBYTE)&dwDataMajor, &iSize) == ERROR_SUCCESS &&
-			RegQueryValueExA(RegKey, "CurrentMinorVersionNumber", nullptr, &dwType, (LPBYTE)&dwDataMinor, &iSize) == ERROR_SUCCESS)
+		return;
+	}
+
+	// Clear and initialize the version info structure
+	ZeroMemory(outVersion, sizeof(OSVERSIONINFO));
+	outVersion->dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+
+	// Registry key to query
+	const char* regPath = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+	const char* regMajor = "CurrentMajorVersionNumber";
+	const char* regMinor = "CurrentMinorVersionNumber";
+
+	DWORD major = 0;
+	DWORD minor = 0;
+	DWORD dataSize = sizeof(DWORD);
+	DWORD valueType = 0;
+	HKEY hKey = nullptr;
+
+	// Open the registry key
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regPath, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+	{
+		// Read both major and minor version values
+		if (RegQueryValueExA(hKey, regMajor, nullptr, &valueType, reinterpret_cast<LPBYTE>(&major), &dataSize) == ERROR_SUCCESS &&
+			RegQueryValueExA(hKey, regMinor, nullptr, &valueType, reinterpret_cast<LPBYTE>(&minor), &dataSize) == ERROR_SUCCESS)
 		{
-			oOS_version->dwMajorVersion = dwDataMajor;
-			oOS_version->dwMinorVersion = dwDataMinor;
+			outVersion->dwMajorVersion = major;
+			outVersion->dwMinorVersion = minor;
 		}
-		RegCloseKey(RegKey);
+
+		RegCloseKey(hKey);
 	}
 }
 
 // Get Windows Operating System version number from kernel32.dll
-void Logging::GetVersionFile(OSVERSIONINFO *oOS_version)
+void Logging::GetVersionFile(OSVERSIONINFO* versionInfo)
 {
-	// Initialize variables
-	oOS_version->dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-	oOS_version->dwMajorVersion = 0;
-	oOS_version->dwMinorVersion = 0;
-	oOS_version->dwBuildNumber = 0;
-
-	// Load version.dll
-	HMODULE Module = LoadLibraryA("version.dll");
-	if (!Module)
+	if (!versionInfo)
 	{
-		Log() << "Failed to load version.dll!";
 		return;
 	}
 
-	// Declare functions
-	typedef DWORD(WINAPI *PFN_GetFileVersionInfoSize)(LPCSTR lptstrFilename, LPDWORD lpdwHandle);
-	typedef BOOL(WINAPI *PFN_GetFileVersionInfo)(LPCSTR lptstrFilename, DWORD dwHandle, DWORD dwLen, LPVOID lpData);
-	typedef BOOL(WINAPI *PFN_VerQueryValue)(LPCVOID pBlock, LPCSTR lpSubBlock, LPVOID *lplpBuffer, PUINT puLen);
+	// Initialize output structure
+	ZeroMemory(versionInfo, sizeof(OSVERSIONINFO));
+	versionInfo->dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
 
-	// Get functions ProcAddress
-	PFN_GetFileVersionInfoSize GetFileVersionInfoSizeA = reinterpret_cast<PFN_GetFileVersionInfoSize>(GetProcAddress(Module, "GetFileVersionInfoSizeA"));
-	PFN_GetFileVersionInfo GetFileVersionInfoA = reinterpret_cast<PFN_GetFileVersionInfo>(GetProcAddress(Module, "GetFileVersionInfoA"));
-	PFN_VerQueryValue VerQueryValueA = reinterpret_cast<PFN_VerQueryValue>(GetProcAddress(Module, "VerQueryValueA"));
-	if (!GetFileVersionInfoSizeA || !GetFileVersionInfoA || !VerQueryValueA)
+	// Get full path to kernel32.dll
+	char systemPath[MAX_PATH] = {};
+	if (GetSystemDirectoryA(systemPath, MAX_PATH) == 0)
 	{
-		if (!GetFileVersionInfoSizeA)
-		{
-			Log() << "Failed to get 'GetFileVersionInfoSize' ProcAddress of version.dll!";
-		}
-		if (!GetFileVersionInfoA)
-		{
-			Log() << "Failed to get 'GetFileVersionInfo' ProcAddress of version.dll!";
-		}
-		if (!VerQueryValueA)
-		{
-			Log() << "Failed to get 'VerQueryValue' ProcAddress of version.dll!";
-		}
+		Log() << "Failed to get system directory.";
 		return;
 	}
 
-	// Get kernel32.dll path
-	char buffer[MAX_PATH] = { 0 };
-	GetSystemDirectoryA(buffer, MAX_PATH);
-	strcat_s(buffer, MAX_PATH, "\\kernel32.dll");
+	strcat_s(systemPath, "\\kernel32.dll");
 
-	// Define registry keys
-	DWORD verHandle = 0;
-	UINT size = 0;
-	LPBYTE lpBuffer = nullptr;
-	LPCSTR szVersionFile = buffer;
-	DWORD verSize = GetFileVersionInfoSizeA(szVersionFile, &verHandle);
-
-	// GetVersion from a file
-	if (verSize != 0)
+	// Load version.dll and retrieve required function pointers
+	HMODULE hVersion = GetModuleHandleA("version.dll");
+	if (!hVersion)
 	{
-		std::string verData(verSize + 1, '\0');
+		hVersion = LoadLibraryA("version.dll");
+	}
+	if (!hVersion)
+	{
+		Log() << "Unable to load version.dll.";
+		return;
+	}
 
-		if (GetFileVersionInfoA(szVersionFile, verHandle, verSize, &verData[0]))
+	auto pGetFileVersionInfoSizeA = reinterpret_cast<decltype(&GetFileVersionInfoSizeA)>(
+		GetProcAddress(hVersion, "GetFileVersionInfoSizeA"));
+	auto pGetFileVersionInfoA = reinterpret_cast<decltype(&GetFileVersionInfoA)>(
+		GetProcAddress(hVersion, "GetFileVersionInfoA"));
+	auto pVerQueryValueA = reinterpret_cast<decltype(&VerQueryValueA)>(
+		GetProcAddress(hVersion, "VerQueryValueA"));
+
+	if (!pGetFileVersionInfoSizeA || !pGetFileVersionInfoA || !pVerQueryValueA)
+	{
+		Log() << "Missing version functions in version.dll.";
+		return;
+	}
+
+	DWORD handle = 0;
+	DWORD verSize = pGetFileVersionInfoSizeA(systemPath, &handle);
+	if (verSize == 0)
+	{
+		return;
+	}
+
+	std::vector<BYTE> versionData(verSize);
+	if (!pGetFileVersionInfoA(systemPath, handle, verSize, versionData.data()))
+	{
+		return;
+	}
+
+	VS_FIXEDFILEINFO* fileInfo = nullptr;
+	UINT len = 0;
+	if (pVerQueryValueA(versionData.data(), "\\", reinterpret_cast<LPVOID*>(&fileInfo), &len))
+	{
+		if (fileInfo && fileInfo->dwSignature == 0xFEEF04BD)
 		{
-			if (VerQueryValueA(&verData[0], "\\", (VOID FAR* FAR*)&lpBuffer, &size))
+			versionInfo->dwMajorVersion = HIWORD(fileInfo->dwFileVersionMS);
+			versionInfo->dwMinorVersion = LOWORD(fileInfo->dwFileVersionMS);
+			versionInfo->dwBuildNumber = HIWORD(fileInfo->dwFileVersionLS);
+		}
+	}
+}
+
+// Get Windows Operating System name from registry
+void Logging::GetProductNameFromRegistry(char* Name, DWORD Size)
+{
+	if (!Name || Size == 0)
+	{
+		return;
+	}
+
+	Name[0] = '\0';
+
+	HKEY hKey = nullptr;
+	const char* regPath = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+	const char* valueName = "ProductName";
+
+	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, regPath, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+	{
+		DWORD dataSize = Size;
+		DWORD valueType = 0;
+
+		LONG result = RegQueryValueExA(hKey, valueName, nullptr, &valueType, reinterpret_cast<LPBYTE>(Name), &dataSize);
+		RegCloseKey(hKey);
+
+		if (result == ERROR_SUCCESS && (valueType == REG_SZ || valueType == REG_EXPAND_SZ))
+		{
+			// Ensure null termination
+			if (dataSize > 0 && dataSize <= Size)
 			{
-				if (size)
-				{
-					VS_FIXEDFILEINFO *verInfo = (VS_FIXEDFILEINFO *)lpBuffer;
-					if (verInfo->dwSignature == 0xfeef04bd)
-					{
-						oOS_version->dwMajorVersion = (verInfo->dwFileVersionMS >> 16) & 0xffff;
-						oOS_version->dwMinorVersion = (verInfo->dwFileVersionMS >> 0) & 0xffff;
-						oOS_version->dwBuildNumber = (verInfo->dwFileVersionLS >> 16) & 0xffff;
-						//(verInfo->dwFileVersionLS >> 0) & 0xffff		//  <-- Other data not used
-					}
-				}
+				// dataSize includes the terminating null, so we are good
+				Name[dataSize - 1] = '\0';
+			}
+			else
+			{
+				// Defensive: forcibly null terminate last char
+				Name[Size - 1] = '\0';
 			}
 		}
+		else
+		{
+			// Failed to read or wrong type
+			Name[0] = '\0';
+		}
 	}
 }
 
-// Get Windows Operating System version number from kernel32.dll
-void Logging::GetProductName(char *Name, DWORD Size)
+void Logging::GetProductNameFromVersion(OSVERSIONINFOA& inVersion, char* outName, size_t outSize)
 {
-	strcpy_s(Name, Size, "");
-
-	// Define registry keys
-	HKEY RegKey = nullptr;
-
-	// Get version
-	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ, &RegKey) == ERROR_SUCCESS)
+	if (!outName || outSize == 0)
 	{
-		RegQueryValueExA(RegKey, "ProductName", NULL, NULL, (LPBYTE)Name, &Size);
-		RegCloseKey(RegKey);
+		return;
 	}
+
+	outName[0] = '\0'; // Clear output
+
+	// Helper macro to safely copy strings
+#define SAFE_STRCPY(dest, src) strncpy_s(dest, outSize, src, _TRUNCATE)
+
+// Map version numbers to names based on official Microsoft versioning info
+// See: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-osversioninfoexa
+
+	if (inVersion.dwMajorVersion == 10 && inVersion.dwMinorVersion == 0)
+	{
+		if (inVersion.dwBuildNumber >= 22000)
+		{
+			// Windows 11 was introduced with build 22000+
+			SAFE_STRCPY(outName, "Windows 11");
+		}
+		else if (inVersion.dwBuildNumber >= 19041)
+		{
+			// Windows 10, 2004 or later
+			SAFE_STRCPY(outName, "Windows 10");
+		}
+		else
+		{
+			// Windows 10 earlier builds
+			SAFE_STRCPY(outName, "Windows 10 (Pre-2004)");
+		}
+	}
+	else if (inVersion.dwMajorVersion == 6)
+	{
+		switch (inVersion.dwMinorVersion)
+		{
+		case 3:
+			SAFE_STRCPY(outName, "Windows 8.1 / Windows Server 2012 R2");
+			break;
+		case 2:
+			SAFE_STRCPY(outName, "Windows 8 / Windows Server 2012");
+			break;
+		case 1:
+			SAFE_STRCPY(outName, "Windows 7 / Windows Server 2008 R2");
+			break;
+		case 0:
+			SAFE_STRCPY(outName, "Windows Vista / Windows Server 2008");
+			break;
+		default:
+			SAFE_STRCPY(outName, "Windows NT 6.x (Unknown)");
+			break;
+		}
+	}
+	else if (inVersion.dwMajorVersion == 5)
+	{
+		switch (inVersion.dwMinorVersion)
+		{
+		case 2:
+			SAFE_STRCPY(outName, "Windows Server 2003 / Windows XP x64");
+			break;
+		case 1:
+			SAFE_STRCPY(outName, "Windows XP");
+			break;
+		case 0:
+			SAFE_STRCPY(outName, "Windows 2000");
+			break;
+		default:
+			SAFE_STRCPY(outName, "Windows NT 5.x (Unknown)");
+			break;
+		}
+	}
+	else
+	{
+		// Unknown or unsupported version
+		SAFE_STRCPY(outName, "Unknown Windows Version");
+	}
+
+#undef SAFE_STRCPY
 }
 
 // Log hardware manufacturer
@@ -451,160 +560,154 @@ void Logging::LogComputerManufacturer()
 		return;
 	}
 
-	std::string Buffer1, Buffer2;
-	HKEY hkData;
-	LPSTR lpString1 = nullptr, lpString2 = nullptr, lpString3 = nullptr;
-	LPBYTE lpData = nullptr;
-	DWORD dwType = 0, dwSize = 0;
-	UINT uIndex, uStart, uEnd, uString, uState = 0;
-	HRESULT hr;
+	std::string manufacturer, alternate;
+	std::string chassisType;
+	DWORD currentIndex = 0, dataSize = 0, result = 0;
+	BYTE* smbiosData = nullptr;
 
-	if ((hr = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_READ, &hkData)) != ERROR_SUCCESS)
+	// Open registry key to access raw SMBIOS data
+	HKEY hKey;
+	result = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\CurrentControlSet\\Services\\mssmbios\\Data", 0, KEY_READ, &hKey);
+	if (result != ERROR_SUCCESS)
 	{
 		return;
 	}
 
-	if ((hr = RegQueryValueExA(hkData, "SMBiosData", nullptr, &dwType, nullptr, &dwSize)) == ERROR_SUCCESS)
+	DWORD valueType = 0;
+	result = RegQueryValueExA(hKey, "SMBiosData", nullptr, &valueType, nullptr, &dataSize);
+	if (result != ERROR_SUCCESS || valueType != REG_BINARY || dataSize < 8)
 	{
-		if (dwSize < 8 || dwType != REG_BINARY)
-		{
-			hr = ERROR_BADKEY;
-		}
-		else
-		{
-			lpData = new BYTE[dwSize];
-			if (!lpData)
-			{
-				hr = ERROR_NOT_ENOUGH_MEMORY;
-			}
-			else
-			{
-				hr = RegQueryValueExA(hkData, "SMBiosData", nullptr, nullptr, lpData, &dwSize);
-			}
-		}
+		RegCloseKey(hKey);
+		return;
 	}
 
-	RegCloseKey(hkData);
-
-	if (hr == ERROR_SUCCESS)
+	smbiosData = new (std::nothrow) BYTE[dataSize];
+	if (!smbiosData)
 	{
-		uIndex = 8 + *(WORD *)(lpData + 6);
-		uEnd = min(dwSize, (DWORD)(8 + *(WORD *)(lpData + 4))) - 1;
-		lpData[uEnd] = 0x00;
+		RegCloseKey(hKey);
+		return;
+	}
 
-		while (uIndex + 1 < uEnd && lpData[uIndex] != 0x7F)
+	result = RegQueryValueExA(hKey, "SMBiosData", nullptr, nullptr, smbiosData, &dataSize);
+	RegCloseKey(hKey);
+
+	if (result != ERROR_SUCCESS)
+	{
+		delete[] smbiosData;
+		return;
+	}
+
+	// Parse SMBIOS structures
+	DWORD structTableStart = 8 + *(WORD*)(smbiosData + 6);
+	DWORD structTableEnd = min(dataSize, 8U + *(WORD*)(smbiosData + 4U));
+	if (structTableEnd <= structTableStart)
+	{
+		delete[] smbiosData;
+		return;
+	}
+
+	currentIndex = structTableStart;
+	smbiosData[structTableEnd - 1] = 0x00;  // Null-terminate just in case
+
+	bool foundChassis = false;
+	UINT state = 0;
+
+	while (currentIndex + 1 < structTableEnd && smbiosData[currentIndex] != 0x7F)
+	{
+		BYTE type = smbiosData[currentIndex];
+		BYTE length = smbiosData[currentIndex + 1];
+		UINT stringIndex = 1;
+		DWORD structStart = currentIndex;
+		currentIndex += length;
+
+		if (currentIndex >= structTableEnd)
 		{
-			uIndex += lpData[(uStart = uIndex) + 1];
-			uString = 1;
-			if (uIndex < uEnd && uStart + 6 < uEnd)
+			break;
+		}
+
+		do
+		{
+			const char* str = reinterpret_cast<const char*>(smbiosData + currentIndex);
+			bool used = false;
+
+			if (type == 0x01 && state == 0)
 			{
-				do
+				BYTE idx = smbiosData[structStart + 4];
+				if (idx == stringIndex)
 				{
-					if (lpData[uStart] == 0x01 && uState == 0)
+					if (_stricmp(str, "System manufacturer") == 0)
 					{
-						if (lpData[uStart + 4] == uString ||
-							lpData[uStart + 5] == uString ||
-							lpData[uStart + 6] == uString)
-						{
-							lpString1 = (LPSTR)(lpData + uIndex);
-							if (!_stricmp(lpString1, "System manufacturer"))
-							{
-								lpString1 = nullptr;
-								uState++;
-							}
-						}
+						state++;
+						used = true;
 					}
-					else if (lpData[uStart] == 0x02 && uState == 1)
-					{
-						if (lpData[uStart + 4] == uString ||
-							lpData[uStart + 5] == uString ||
-							lpData[uStart + 6] == uString)
-						{
-							lpString1 = (LPSTR)(lpData + uIndex);
-						}
-					}
-					else if (lpData[uStart] == 0x02 && uState == 0)
-					{
-						if (lpData[uStart + 4] == uString ||
-							lpData[uStart + 5] == uString ||
-							lpData[uStart + 6] == uString)
-						{
-							lpString2 = (LPSTR)(lpData + uIndex);
-						}
-					}
-					else if (lpData[uStart] == 0x03 && uString == 1)
-					{
-						switch (lpData[uStart + 5])
-						{
-						default:   lpString3 = "(Other)";               break;
-						case 0x02: lpString3 = "(Unknown)";             break;
-						case 0x03: lpString3 = "(Desktop)";             break;
-						case 0x04: lpString3 = "(Low Profile Desktop)"; break;
-						case 0x06: lpString3 = "(Mini Tower)";          break;
-						case 0x07: lpString3 = "(Tower)";               break;
-						case 0x08: lpString3 = "(Portable)";            break;
-						case 0x09: lpString3 = "(Laptop)";              break;
-						case 0x0A: lpString3 = "(Notebook)";            break;
-						case 0x0E: lpString3 = "(Sub Notebook)";        break;
-						}
-					}
-					if (lpString1 != nullptr)
-					{
-						if (Buffer1.size() != 0)
-						{
-							Buffer1.append(" ");
-						}
-						Buffer1.append(lpString1);
-						lpString1 = nullptr;
-					}
-					else if (lpString2 != nullptr)
-					{
-						if (Buffer2.size() != 0)
-						{
-							Buffer2.append(" ");
-						}
-						Buffer2.append(lpString2);
-						lpString2 = nullptr;
-					}
-					else if (lpString3 != nullptr)
-					{
-						if (Buffer1.size() != 0)
-						{
-							Buffer1.append(" ");
-							Buffer1.append(lpString3);
-						}
-						if (Buffer2.size() != 0)
-						{
-							Buffer2.append(" ");
-							Buffer2.append(lpString3);
-						}
-						break;
-					}
-					uString++;
-					while (++uIndex && uIndex < uEnd && lpData[uIndex]);
-					uIndex++;
-				} while (uIndex < uEnd && lpData[uIndex]);
-				if (lpString3 != nullptr)
-				{
-					break;
 				}
 			}
-			uIndex++;
+			else if (type == 0x02)
+			{
+				BYTE idx = smbiosData[structStart + 4];
+				if (idx == stringIndex)
+				{
+					if (state == 1)
+					{
+						manufacturer = str;
+						state++;
+						used = true;
+					}
+					else if (state == 0)
+					{
+						alternate = str;
+						used = true;
+					}
+				}
+			}
+			else if (type == 0x03 && stringIndex == 1 && !foundChassis)
+			{
+				BYTE formFactor = smbiosData[structStart + 5];
+				switch (formFactor)
+				{
+				case 0x02: chassisType = "(Unknown)"; break;
+				case 0x03: chassisType = "(Desktop)"; break;
+				case 0x04: chassisType = "(Low Profile Desktop)"; break;
+				case 0x06: chassisType = "(Mini Tower)"; break;
+				case 0x07: chassisType = "(Tower)"; break;
+				case 0x08: chassisType = "(Portable)"; break;
+				case 0x09: chassisType = "(Laptop)"; break;
+				case 0x0A: chassisType = "(Notebook)"; break;
+				case 0x0E: chassisType = "(Sub Notebook)"; break;
+				default:   chassisType = "(Other)"; break;
+				}
+				foundChassis = true;
+			}
+
+			if (used)
+			{
+				currentIndex += strlen(str);
+			}
+
+			currentIndex++;
+			stringIndex++;
+		} while (currentIndex < structTableEnd && smbiosData[currentIndex] != 0x00);
+
+		while (currentIndex < structTableEnd && smbiosData[currentIndex] == 0x00)
+		{
+			currentIndex++;
+		}
+
+		if (foundChassis)
+		{
+			break;
 		}
 	}
 
-	if (lpData)
-	{
-		delete[] lpData;
-	}
+	delete[] smbiosData;
 
-	if (Buffer1.size() != 0)
+	if (!manufacturer.empty())
 	{
-		Log() << Buffer1.c_str();
+		Log() << manufacturer << (chassisType.empty() ? "" : (" " + chassisType));
 	}
-	if (Buffer2.size() != 0)
+	if (!alternate.empty())
 	{
-		Log() << Buffer2.c_str();
+		Log() << alternate << (chassisType.empty() ? "" : (" " + chassisType));
 	}
 }
 
@@ -654,13 +757,19 @@ void Logging::LogOSVersion()
 
 	// Get OS string name
 	char sOSName[MAX_PATH];
-	GetProductName(sOSName, MAX_PATH);
+	GetProductNameFromRegistry(sOSName, MAX_PATH);
 
 	// Get bitness (32bit vs 64bit)
 	SYSTEM_INFO SystemInfo;
 	GetNativeSystemInfo(&SystemInfo);
 
-	// Log operating system version and type
+	// Log operating system version and type from registry
+	Log() << sOSName << ((SystemInfo.wProcessorArchitecture == 9) ? " 64-bit" : "") << " (" << oOS_version.dwMajorVersion << "." << oOS_version.dwMinorVersion << "." << oOS_version.dwBuildNumber << ")" << ServicePack;
+
+	// Get OS string name from version
+	GetProductNameFromVersion(oOS_version, sOSName, MAX_PATH);
+
+	// Log operating system version and type from version
 	Log() << sOSName << ((SystemInfo.wProcessorArchitecture == 9) ? " 64-bit" : "") << " (" << oOS_version.dwMajorVersion << "." << oOS_version.dwMinorVersion << "." << oOS_version.dwBuildNumber << ")" << ServicePack;
 }
 
@@ -682,37 +791,32 @@ void Logging::LogVideoCard()
 }
 
 // Get process parent PID
-DWORD Logging::GetPPID()
+DWORD Logging::GetParentProcessId()
 {
-	HANDLE hSnapshot;
-	PROCESSENTRY32 pe32;
-	DWORD ppid = 0, pid = GetCurrentProcessId();
+	DWORD currentPid = GetCurrentProcessId();
+	DWORD parentPid = 0;
 
-	hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	__try
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snapshot == INVALID_HANDLE_VALUE)
+		return 0;
+
+	PROCESSENTRY32 entry = {};
+	entry.dwSize = sizeof(entry);
+
+	if (Process32First(snapshot, &entry))
 	{
-		if (hSnapshot == INVALID_HANDLE_VALUE) __leave;
-
-		ZeroMemory(&pe32, sizeof(pe32));
-		pe32.dwSize = sizeof(pe32);
-		if (!Process32First(hSnapshot, &pe32)) __leave;
-
-		do {
-			if (pe32.th32ProcessID == pid) {
-				ppid = pe32.th32ParentProcessID;
+		do
+		{
+			if (entry.th32ProcessID == currentPid)
+			{
+				parentPid = entry.th32ParentProcessID;
 				break;
 			}
-		} while (Process32Next(hSnapshot, &pe32));
+		} while (Process32Next(snapshot, &entry));
+	}
 
-	}
-	__finally
-	{
-		if (hSnapshot && hSnapshot != INVALID_HANDLE_VALUE)
-		{
-			CloseHandle(hSnapshot);
-		}
-	}
-	return ppid;
+	CloseHandle(snapshot);
+	return parentPid;
 }
 
 // Check if process name matches the requested PID
@@ -726,7 +830,7 @@ bool Logging::CheckProcessNameFromPID(DWORD pid, char *name)
 	}
 
 	// Get process path
-	char pidname[MAX_PATH];
+	char pidname[MAX_PATH] = {};
 	DWORD size = NewGetProcessImageFileName(hProcess, (LPSTR)&pidname, MAX_PATH);
 	if (!size)
 	{
@@ -805,7 +909,7 @@ void Logging::LogSteamGameType()
 	GetModuleFileNameA(nullptr, name, MAX_PATH);
 
 	// Check if game is a Steam game
-	if (GetModuleHandleA("steam_api.dll") || CheckEachParentFolder("steam_api.dll", name) || CheckProcessNameFromPID(GetPPID(), "steam.exe"))
+	if (GetModuleHandleA("steam_api.dll") || CheckEachParentFolder("steam_api.dll", name) || CheckProcessNameFromPID(GetParentProcessId(), "steam.exe"))
 	{
 		Log() << "Steam game detected!";
 		return;
