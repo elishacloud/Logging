@@ -681,7 +681,7 @@ void Logging::LogComputerManufacturer()
 
 			if (used)
 			{
-				currentIndex += strlen(str);
+				currentIndex += (DWORD)strlen(str);
 			}
 
 			currentIndex++;
