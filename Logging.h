@@ -8,11 +8,9 @@
 #endif
 
 #include <chrono>
-#include <sstream>
-#include <fstream>
-#include <iostream>
+#include <string>
 #include <ostream>
-#include <type_traits>
+#include <fstream>
 
 #define LOG_ONCE(msg) \
 	{ \
