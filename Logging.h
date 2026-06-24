@@ -444,6 +444,7 @@ namespace Logging
 
 	void LogFormat(char * fmt, ...);
 	void LogFormat(wchar_t * fmt, ...);
+	std::string BytesToString(const void* addr, size_t bytes);
 	void LogProcessNameAndPID();
 	void LogOSVersion();
 	void LogComputerManufacturer();

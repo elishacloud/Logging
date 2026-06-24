@@ -28,6 +28,8 @@
 #include <VersionHelpers.h>
 #include <tlhelp32.h>
 #include "Logging.h"
+#include <sstream>
+#include <iomanip>
 
 // Function pointers for GetProcessImageFileNameA and GetProcessImageFileNameW
 typedef DWORD(WINAPI* GetProcessImageFileNameA_t)(HANDLE, LPSTR, DWORD);
@@ -259,6 +261,34 @@ void Logging::LogFormat(wchar_t * fmt, ...)
 
 	// Log formatted text
 	Log() << output.c_str();
+}
+
+std::string Logging::BytesToString(const void* addr, size_t bytes)
+{
+	if (!addr || bytes == 0)
+	{
+		return "";
+	}
+
+	const BYTE* byteaddr = static_cast<const BYTE*>(addr);
+
+	std::ostringstream oss;
+
+	oss << "0x" << std::hex << std::uppercase;
+
+	for (size_t x = 0; x < bytes; x++)
+	{
+		const unsigned int value = byteaddr[x];
+
+		if (value < 0x10)
+		{
+			oss << '0';
+		}
+
+		oss << value;
+	}
+
+	return oss.str();
 }
 
 // Logs the process name and PID
