@@ -420,7 +420,7 @@ namespace Logging
 		return os;
 	}
 
-	// Wrapper class for logging time lapse
+	// Wrapper classes for logging time lapse
 	class GetTimeLapseInMS
 	{
 	public:
@@ -436,6 +436,46 @@ namespace Logging
 
 			// Output the time lapse in "XXms" format
 			return os << duration << "ms";
+		}
+
+	private:
+		const std::chrono::steady_clock::time_point& startTime;
+	};
+
+	class GetTimeLapseInUS
+	{
+	public:
+		GetTimeLapseInUS(const std::chrono::steady_clock::time_point& startTime)
+			: startTime(startTime) {
+		}
+
+		friend std::ostream& operator<<(std::ostream& os, const GetTimeLapseInUS& timeLapse)
+		{
+			auto currentTime = std::chrono::steady_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+				currentTime - timeLapse.startTime).count();
+
+			return os << duration << "us";
+		}
+
+	private:
+		const std::chrono::steady_clock::time_point& startTime;
+	};
+
+	class GetTimeLapseInNS
+	{
+	public:
+		GetTimeLapseInNS(const std::chrono::steady_clock::time_point& startTime)
+			: startTime(startTime) {
+		}
+
+		friend std::ostream& operator<<(std::ostream& os, const GetTimeLapseInNS& timeLapse)
+		{
+			auto currentTime = std::chrono::steady_clock::now();
+			auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+				currentTime - timeLapse.startTime).count();
+
+			return os << duration << "ns";
 		}
 
 	private:
